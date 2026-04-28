@@ -32,7 +32,7 @@ def train_step(model: BasicsTransformerLM, opt: AdamW,
         with TorchStepProfiler(f"backward {step}"):    
             loss.backward()
         opt.step()
-        print(f"step: {step}, loss: {loss:.3f}, time_forward: {find(f"forward {step:.3f}")}, time_backward: {find(f"backward {step:.3f}")}")
+        print(f"step: {step}, loss: {loss:.3f}, time_forward: {find(f"forward {step}"):.3f}, time_backward: {find(f"backward {step}"):.3f}")
 
 
 if __name__ == '__main__':
