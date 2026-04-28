@@ -1,12 +1,17 @@
-from cs336_basics.model import BasicsTransformerLM
+import cs336_basics.model
+from cs336_basics.model import BasicsTransformerLM, softmax
 from cs336_basics.data import get_batch
 from cs336_basics.optimizer import AdamW
 from cs336_basics.nn_utils import cross_entropy
 import torch
 from torch import Tensor
 from torch.nn import Module
-from .profiler import TorchStepProfiler, get_result, find, init_profiler
+from .profiler import range_profiler, get_result, find, init_profiler
 import numpy as np
+from einops import einsum
+import math
+
+import torch.cuda.nvtx as nvtx
 
 def param_counting(model: Module) -> int:
     count = 0
@@ -14,7 +19,7 @@ def param_counting(model: Module) -> int:
         count += param.numel()
     return count
 
-def train_step(model: BasicsTransformerLM, opt: AdamW, 
+def train_step_naive_profiler(model: BasicsTransformerLM, opt: AdamW, 
                data: tuple[Tensor, Tensor], 
                step: int, is_warm_up: bool):
     opt.zero_grad()
@@ -26,18 +31,65 @@ def train_step(model: BasicsTransformerLM, opt: AdamW,
         opt.step()
         print(f"step: {step}, loss: {loss:.3f}, warm up")
     else:
-        with TorchStepProfiler(f"forward {step}"):
+        with range_profiler(f"forward {step}"):
             logits = model(inputs)
             loss = cross_entropy(logits, targets)
-        with TorchStepProfiler(f"backward {step}"):    
+        with range_profiler(f"backward {step}"):    
             loss.backward()
         opt.step()
         print(f"step: {step}, loss: {loss:.3f}, " + 
               f"time_forward: {find(f"forward {step}")[1] - find(f"forward {step}")[0]:.3f}, " + 
               f"time_backward: {find(f"backward {step}")[1]-find(f"backward {step}")[0]:.3f}")
 
+def annotated_scaled_dot_product_attention(
+    Q: Tensor,
+    K: Tensor,
+    V: Tensor,
+    mask: Tensor | None = None,
+) -> Tensor:
+
+    d_k = K.shape[-1]
+
+    with nvtx.range("computing attention scores"):
+        attention_scores = einsum(Q, K, "... query d_k, ... key d_k -> ... query key") / math.sqrt(d_k)
+
+    if mask is not None:
+        attention_scores = torch.where(mask, attention_scores, float("-inf"))
+
+    with nvtx.range("computing softmax"):
+        attention_weights = softmax(attention_scores, dim=-1)  # Softmax over the key dimension
+
+    with nvtx.range("final matmul"):
+        return einsum(attention_weights, V, "... query key, ... key d_v ->  ... query d_v")
+
+
+
+
+
+def train_step_nvtx(model: BasicsTransformerLM, opt: AdamW, 
+               data: tuple[Tensor, Tensor], 
+               step: int, is_warm_up: bool):
+    opt.zero_grad()
+    inputs, targets = data
+    if is_warm_up:
+        logits = model(inputs)
+        loss = cross_entropy(logits, targets)
+        loss.backward()
+        opt.step()
+        print(f"step: {step}, loss: {loss:.3f}, warm up")
+    else:
+        cs336_basics.model.scaled_dot_product_attention = annotated_scaled_dot_product_attention
+        logits = model(inputs)
+        loss = cross_entropy(logits, targets)
+        loss.backward()
+        opt.step()
+        print(f"step: {step}, loss: {loss:.3f}, " + 
+              f"time_forward: {find(f"forward {step}")[1] - find(f"forward {step}")[0]:.3f}, " + 
+              f"time_backward: {find(f"backward {step}")[1]-find(f"backward {step}")[0]:.3f}")
 
 if __name__ == '__main__':
+    train_step = train_step_nvtx # train_step_naive_profiler
+
     model_conf = {"vocab_size": 50257, "context_length": 1024, 
               "d_model": 768, "num_layers": 12, 
               "num_heads": 12, "d_ff": 3072}

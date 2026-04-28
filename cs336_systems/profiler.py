@@ -23,7 +23,7 @@ def find(name: str) -> tuple[int, int]:
             return t_start, t_end
     raise f"There is no name {name} in the record!"
 
-class TorchStepProfiler:
+class range_profiler:
     def __init__(self, name: str = ""):
         self.name = name
 
