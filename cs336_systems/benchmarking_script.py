@@ -5,7 +5,7 @@ from cs336_basics.nn_utils import cross_entropy
 import torch
 from torch import Tensor
 from torch.nn import Module
-from .profiler import TorchStepProfiler, get_result
+from .profiler import TorchStepProfiler, get_result, find
 import numpy as np
 
 def param_counting(model: Module) -> int:
@@ -23,12 +23,16 @@ def train_step(model: BasicsTransformerLM, opt: AdamW,
         logits = model(inputs)
         loss = cross_entropy(logits, targets)
         loss.backward()
+        print(f"step: {step}, loss: {loss:.3f}, warm up")
     else:
         with TorchStepProfiler(f"forward {step}"):
             logits = model(inputs)
             loss = cross_entropy(logits, targets)
         with TorchStepProfiler(f"backward {step}"):    
             loss.backward()
+        print(f"step: {step}, loss: {loss:.3f}, \
+              time_forward: {find(f"forward {step}")}, \
+              time_backward: {find(f"backward {step}")}")
 
 
 if __name__ == '__main__':
