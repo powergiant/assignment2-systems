@@ -24,7 +24,7 @@ class TorchStepProfiler:
         global _record
         _record.append((self.name if self.name else "", timeit.default_timer(), None))
 
-    def __exit__(self):
+    def __exit__(self, *args):
         global _record
         synchronize()
         _record[-1][1] = timeit.default_timer()
