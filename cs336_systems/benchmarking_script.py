@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
     n_total_step = 100
 
-    data_config = {'dataset_size': 100000, 'batch_size': 5, 'context_length': 512}
+    data_config = {'dataset_size': 10000, 'batch_size': 5, 'context_length': 512}
 
     dataset = np.random.randint(0, model_conf["vocab_size"], data_config['dataset_size'])
 
