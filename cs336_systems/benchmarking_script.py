@@ -5,7 +5,7 @@ from cs336_basics.nn_utils import cross_entropy
 import torch
 from torch import Tensor
 from torch.nn import Module
-from .profiler import TorchStepProfiler, get_result, find
+from .profiler import TorchStepProfiler, get_result, find, init_profiler
 import numpy as np
 
 def param_counting(model: Module) -> int:
@@ -56,6 +56,7 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model.to(device)
+    init_profiler()
     for step in range(n_total_step):
         data = get_batch(dataset=dataset, 
                          batch_size=data_config['batch_size'], 
