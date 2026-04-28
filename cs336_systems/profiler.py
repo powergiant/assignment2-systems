@@ -10,22 +10,21 @@ def init_profiler():
 def is_init() -> bool:
     return _is_init
 
-def record() -> list:
+def get_result() -> list:
     if _is_init:
         return _record
     else:
         raise "Must initialize before using profiler!"
 
 class TorchStepProfiler:
-    def __init__(self):
-        pass
+    def __init__(self, name: str = ""):
+        self.name = name
 
     def __enter__(self):
         global _record
-        _record[-1] = (timeit.default_timer(), None)
+        _record[-1] = (self.name if self.name else "", timeit.default_timer(), None)
 
     def __exit__(self):
         global _record
         synchronize()
         _record[-1][1] = timeit.default_timer()
-        
