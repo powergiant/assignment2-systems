@@ -41,6 +41,7 @@ def train_step_naive_profiler(model: BasicsTransformerLM, opt: AdamW,
               f"time_forward: {find(f"forward {step}")[1] - find(f"forward {step}")[0]:.3f}, " + 
               f"time_backward: {find(f"backward {step}")[1]-find(f"backward {step}")[0]:.3f}")
 
+@nvtx.range("scaled dot product attention")
 def annotated_scaled_dot_product_attention(
     Q: Tensor,
     K: Tensor,
