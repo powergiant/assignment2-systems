@@ -27,4 +27,4 @@ class TorchStepProfiler:
     def __exit__(self, *args):
         global _record
         synchronize()
-        _record[-1][1] = timeit.default_timer()
+        _record[-1] = (_record[-1][0], timeit.default_timer())
