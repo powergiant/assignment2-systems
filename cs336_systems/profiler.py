@@ -6,6 +6,7 @@ _record: list[tuple[str, int, int]] = []
 
 def init_profiler():
     global _is_init, _record
+    _is_init = True
 
 def is_init() -> bool:
     return _is_init
