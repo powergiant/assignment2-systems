@@ -23,6 +23,7 @@ def train_step(model: BasicsTransformerLM, opt: AdamW,
         logits = model(inputs)
         loss = cross_entropy(logits, targets)
         loss.backward()
+        opt.step()
         print(f"step: {step}, loss: {loss:.3f}, warm up")
     else:
         with TorchStepProfiler(f"forward {step}"):
@@ -30,6 +31,7 @@ def train_step(model: BasicsTransformerLM, opt: AdamW,
             loss = cross_entropy(logits, targets)
         with TorchStepProfiler(f"backward {step}"):    
             loss.backward()
+        opt.step()
         print(f"step: {step}, loss: {loss:.3f}, \
               time_forward: {find(f"forward {step}")}, \
               time_backward: {find(f"backward {step}")}")
