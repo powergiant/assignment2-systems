@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     dataset = np.random.randint(0, model_conf["vocab_size"], data_config['dataset_size'])
 
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cuda')
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model.to(device)
     for step in range(n_total_step):
