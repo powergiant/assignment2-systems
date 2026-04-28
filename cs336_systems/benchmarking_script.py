@@ -83,9 +83,7 @@ def train_step_nvtx(model: BasicsTransformerLM, opt: AdamW,
         loss = cross_entropy(logits, targets)
         loss.backward()
         opt.step()
-        print(f"step: {step}, loss: {loss:.3f}, " + 
-              f"time_forward: {find(f"forward {step}")[1] - find(f"forward {step}")[0]:.3f}, " + 
-              f"time_backward: {find(f"backward {step}")[1]-find(f"backward {step}")[0]:.3f}")
+        print(f"step: {step}, loss: {loss:.3f}, profile")
 
 if __name__ == '__main__':
     train_step = train_step_nvtx # train_step_naive_profiler
