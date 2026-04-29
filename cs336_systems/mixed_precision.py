@@ -17,10 +17,10 @@ class ToyModel(nn.Module):
         return x
 
 if __name__ == '__main__':
-    x = torch.randn(10, 100)
     dtype = torch.float16
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = ToyModel(100, 100)
+    x = torch.randn(10, 100).to(device)
+    model = ToyModel(100, 100).to(device=device)
     opt = torch.optim.Adam(model.parameters())
 
     with autocast(device_type=device, dtype=torch.float16):
