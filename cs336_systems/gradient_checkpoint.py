@@ -58,9 +58,19 @@ def experiment_compile_transformer_block():
     # Fuse as much torch.compile will allow
     block = torch.compile(block, fullgraph=True)
     x = torch.randn((4, context_length, d_model), requires_grad=True)
+    
     # Run forward pass, saving for backward
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
         y = block(x)
+
+    print(f"Total size of saved tensors in single TransformerBlock: {total_size_bytes /(1024**2):.2f} MiB")
+
+    global total_size_bytes
+    
+    total_size_bytes = 0
+
+    with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
+        y = block(block(block(block(x))))
 
     print(f"Total size of saved tensors in single TransformerBlock: {total_size_bytes /(1024**2):.2f} MiB")
 
