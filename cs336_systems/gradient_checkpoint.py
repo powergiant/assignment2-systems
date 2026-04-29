@@ -26,6 +26,7 @@ def experiment_compile_rmsnorm():
     x = torch.randn((4, 512, 2560), requires_grad=True)
     ln = RMSNorm(x.shape[-1])
 
+    print('-' * 20 + 'experiment_compile_rmsnorm' + '-' * 20)
     print('-' * 20 + 'before compiling' + '-' * 20)
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_rms, unpack_hook_rms):
         y: torch.Tensor = ln(x)
@@ -36,6 +37,8 @@ def experiment_compile_rmsnorm():
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_rms, unpack_hook_rms):
         y: torch.Tensor = ln_compiled(x)
         y.sum().backward()
+
+    print('\n')
 
 # Now logs the number of bytes saved
 total_size_bytes = 0
@@ -48,16 +51,24 @@ def pack_hook_block(t):
     print(f"Saving residual: {shape=}, {dtype=}, {grad_fn=}")
     return t
 
+def reset_counting():
+    global total_size_bytes
+    total_size_bytes = 0
+
 def unpack_hook_block(t):
     pass
 
 def experiment_compile_transformer_block():
+    print('-' * 20 + 'experiment_compile_transformer_block' + '-' * 20)
+
     # num_layers for this model is 32
     d_model, d_ff, num_heads, context_length = 2560, 10240, 16, 2048
     block = TransformerBlock(d_model=d_model, d_ff=d_ff, num_heads=num_heads, positional_encoder=RotaryEmbedding(dim=d_model // num_heads, context_length=context_length))
     # Fuse as much torch.compile will allow
     block = torch.compile(block, fullgraph=True)
     x = torch.randn((4, context_length, d_model), requires_grad=True)
+
+    reset_counting()
     
     # Run forward pass, saving for backward
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
@@ -65,14 +76,14 @@ def experiment_compile_transformer_block():
 
     print(f"Total size of saved tensors in single TransformerBlock: {total_size_bytes /(1024**2):.2f} MiB")
 
-    global total_size_bytes
-    
-    total_size_bytes = 0
+    reset_counting()
 
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
         y = block(block(block(block(x))))
 
     print(f"Total size of saved tensors in single TransformerBlock: {total_size_bytes /(1024**2):.2f} MiB")
+
+    print('\n')
 
 
         
