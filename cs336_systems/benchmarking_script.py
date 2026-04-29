@@ -86,6 +86,9 @@ def train_step_nvtx(model: BasicsTransformerLM, opt: AdamW,
         opt.step()
         print(f"step: {step}, loss: {loss:.3f}, profile")
 
+
+# TODO: adding memory profiling
+
 if __name__ == '__main__':
     train_step = train_step_nvtx
     # train_step = train_step_naive_profiler
