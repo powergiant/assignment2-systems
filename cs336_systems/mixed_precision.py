@@ -23,7 +23,7 @@ if __name__ == '__main__':
     model = ToyModel(100, 100)
     opt = torch.optim.Adam(model.parameters())
 
-    with autocast(device_type='cpu', dtype=torch.float16):
+    with autocast(device_type=device, dtype=torch.float16):
         opt.zero_grad()
         y: torch.Tensor = model(x)
         loss = y.sum()
