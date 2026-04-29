@@ -46,9 +46,9 @@ def pack_hook_block(t):
     if isinstance(t, torch.nn.Parameter): # Skip logging parameters to avoid double counting
         return t
     global total_size_bytes
-    shape, dtype, grad_fn = t.shape, t.dtype, t.grad_fn
+    # shape, dtype, grad_fn = t.shape, t.dtype, t.grad_fn
     total_size_bytes += t.numel() * t.element_size()
-    print(f"Saving residual: {shape=}, {dtype=}, {grad_fn=}")
+    # print(f"Saving residual: {shape=}, {dtype=}, {grad_fn=}")
     return t
 
 def reset_counting():
@@ -83,6 +83,17 @@ def experiment_compile_transformer_block():
 
     print(f"Total size of saved tensors in single TransformerBlock: {total_size_bytes /(1024**2):.2f} MiB")
 
+
+    from torch.utils.checkpoint import checkpoint
+    def two_blocks(x):
+        x = block(x)
+        x = block(x)
+        return x
+    
+
+    with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
+        y = checkpoint(two_blocks, checkpoint(two_blocks, x, use_reentrant=False), use_reentrant=False)
+    print(f"Total size of saved tensors in four TransformerBlocks with checkpointing: {total_size_bytes / (1024**2):.2f} MiB")
     print('\n')
 
 
