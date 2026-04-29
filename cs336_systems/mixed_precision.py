@@ -19,6 +19,7 @@ class ToyModel(nn.Module):
 if __name__ == '__main__':
     x = torch.randn(10, 100)
     dtype = torch.float16
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = ToyModel(100, 100)
     opt = torch.optim.Adam(model.parameters())
 
