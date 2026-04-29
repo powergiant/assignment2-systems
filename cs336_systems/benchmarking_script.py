@@ -87,7 +87,8 @@ def train_step_nvtx(model: BasicsTransformerLM, opt: AdamW,
         print(f"step: {step}, loss: {loss:.3f}, profile")
 
 if __name__ == '__main__':
-    train_step = train_step_nvtx # train_step_naive_profiler
+    train_step = train_step_nvtx
+    # train_step = train_step_naive_profiler
 
     model_conf = {"vocab_size": 50257, "context_length": 1024, 
               "d_model": 768, "num_layers": 12, 
