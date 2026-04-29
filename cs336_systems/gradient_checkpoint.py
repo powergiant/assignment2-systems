@@ -90,6 +90,7 @@ def experiment_compile_transformer_block():
         x = block(x)
         return x
     
+    reset_counting()
 
     with torch.autograd.graph.saved_tensors_hooks(pack_hook_block, unpack_hook_block):
         y = checkpoint(two_blocks, checkpoint(two_blocks, x, use_reentrant=False), use_reentrant=False)
