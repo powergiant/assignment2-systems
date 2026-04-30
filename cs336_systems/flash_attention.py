@@ -65,8 +65,8 @@ def weighted_sum_forward(x_ptr, w_ptr, out_ptr,
         w_block = tl.load(w_ptr, boundary_check=(0,), padding_option='zero')
         output += tl.sum(x_block * w_block[None, :], 1)
 
-        x_block = tl.advance(x_block, (0, D_BLOCK_SIZE))
-        w_block = tl.advance(w_block, (D_BLOCK_SIZE,))
+        x_ptr = x_ptr.advance((0, D_BLOCK_SIZE))
+        w_ptr = w_ptr.advance((D_BLOCK_SIZE,))
 
     tl.store(out_ptr, output, boundary_check=(0,))
 
@@ -117,8 +117,8 @@ def weighted_sum_backward(x_ptr, w_ptr, grad_out_ptr,
         tl.store(grad_x_ptr, grad_out_block[:, None] * w_block[None, :], boundary_check=(0, 1))
         tl.store(grad_w_partial_reduce_ptr, tl.sum(grad_out_block[:, None] * x_block, 0, keep_dims=True), boundary_check=(0,))
 
-        x_block = tl.advance(x_block, (0, D_BLOCK_SIZE))
-        w_block = tl.advance(w_block, (D_BLOCK_SIZE,))
+        x_ptr = tl.advance(x_ptr, (0, D_BLOCK_SIZE))
+        w_ptr = tl.advance(w_ptr, (D_BLOCK_SIZE,))
         grad_x_ptr = tl.advance(grad_x_ptr, (0, D_BLOCK_SIZE))
         grad_w_partial_reduce_ptr = tl.advance(grad_w_partial_reduce_ptr, (0, D_BLOCK_SIZE))
 
