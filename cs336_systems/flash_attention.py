@@ -163,6 +163,5 @@ if __name__ == '__main__':
     n_elem = 4096
     x = torch.rand(batch, n_elem, device=device)
     w = torch.rand(n_elem, device=device)
-    weighted_sum = WeightedSum()
-    print(weighted_sum(x, w))
+    print(WeightedSum.apply(x, w))
     print((x * w[None, :]).sum(-1))
