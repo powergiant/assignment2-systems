@@ -126,11 +126,11 @@ def weighted_sum_backward(x_ptr, w_ptr, grad_out_ptr,
 class WeightedSum(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x: torch.Tensor, w: torch.Tensor):
-        ctx.ROW_BLOCK_SIZE = 16
-        ctx.D_BLOCK_SIZE = triton.next_power_of_2(d) // 16
         ctx.shape_in = x.shape
         x = x.view(-1, ctx.shape_in[-1])
         num_row, d = x.shape
+        ctx.ROW_BLOCK_SIZE = 16
+        ctx.D_BLOCK_SIZE = triton.next_power_of_2(d) // 16
         ctx.save_for_backward(x, w)
         assert w.shape == x.shape[-1:]
         assert x.is_cuda and w.is_cuda
