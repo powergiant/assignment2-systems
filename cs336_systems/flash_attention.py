@@ -18,12 +18,19 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n_elem, BLOCK_SIZE: tl.constexpr):
 
     tl.store(output_ptr + offsets, output, mask)
 
+def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    output = torch.empty_like(x)
+    n_elem = output.numel()
+    grid = lambda meta: (triton.cdiv(n_elem, meta['BLOCK_SIZE']), )
+    add_kernel[grid](x, y, output, n_elem, BLOCK_SIZE=1024)
+    return output
+
+def benchmark():
+    pass
+
 
 device = 'cuda'
 n_elem = 4096
 x = torch.rand(n_elem, device=device)
 y = torch.rand(n_elem, device=device)
-output = torch.empty_like(x)
-grid = lambda meta: (triton.cdiv(n_elem, meta['BLOCK_SIZE']), )
-add_kernel[grid](x, y, output, n_elem, BLOCK_SIZE=1024)
-print(output)
+print(add(x, y))
