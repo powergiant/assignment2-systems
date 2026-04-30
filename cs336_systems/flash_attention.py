@@ -136,7 +136,7 @@ class WeightedSum(torch.autograd.Function):
         assert x.is_cuda and w.is_cuda
         assert x.is_contiguous()
         output = torch.empty(num_row, device=x.device)
-        weighted_sum_forward[triton.cdiv(num_row, ctx.ROW_BLOCK_SIZE)](x, w, output, d, 1, 1, 1, num_row, d, ctx.ROW_BLOCK_SIZE, ctx.D_BLOCK_SIZE)
+        weighted_sum_forward[(triton.cdiv(num_row, ctx.ROW_BLOCK_SIZE),)](x, w, output, d, 1, 1, 1, num_row, d, ctx.ROW_BLOCK_SIZE, ctx.D_BLOCK_SIZE)
         return output.view(x.shape[:-1])
 
     @staticmethod
@@ -151,7 +151,7 @@ class WeightedSum(torch.autograd.Function):
         num_row_block = triton.cdiv(num_row, ctx.ROW_BLOCK_SIZE)
         grad_x = torch.empty(shape_in, device=grad_out.device)
         grad_w_partial_reduce = torch.empty((num_row_block, d), device=grad_out.device)
-        weighted_sum_backward[num_row_block](x, w, grad_out, grad_x, grad_w_partial_reduce, 
+        weighted_sum_backward[(num_row_block,)](x, w, grad_out, grad_x, grad_w_partial_reduce, 
                                              d, 1, 1, 1, d, 1, d, 1, 
                                              num_row, d, ctx.ROW_BLOCK_SIZE, ctx.D_BLOCK_SIZE)
         grad_w = grad_w_partial_reduce.sum(0)
