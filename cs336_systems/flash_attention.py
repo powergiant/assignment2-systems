@@ -44,7 +44,7 @@ def weighted_sum_forward(x_ptr, w_ptr, out_ptr,
     pid = tl.program_id(0)
     x_ptr = tl.make_block_ptr(x_ptr, shape=(num_row, d), 
                               strides=(x_stride_row, x_stride_dim),
-                              offsets=pid*x_stride_row, 
+                              offsets=(pid*x_stride_row, 0), 
                               block_shape=(ROW_BLOCK_SIZE, D_BLOCK_SIZE),
                               order=(1, 0))
     w_ptr = tl.make_block_ptr(w_ptr, shape=(d, ), 
@@ -54,7 +54,7 @@ def weighted_sum_forward(x_ptr, w_ptr, out_ptr,
                               order=(0,))
     out_ptr = tl.make_block_ptr(out_ptr, shape=(num_row,), 
                                 strides=(out_stride_row,),
-                                offsets=pid*x_stride_row, 
+                                offsets=(pid*x_stride_row,), 
                                 block_shape=(ROW_BLOCK_SIZE,),
                                 order=(0,))
     
