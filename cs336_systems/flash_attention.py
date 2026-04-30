@@ -16,7 +16,7 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n_elem, BLOCK_SIZE: tl.constexpr):
 
     output = x + y
 
-    tl.store(output_ptr, output, mask)
+    tl.store(output_ptr + offsets, output, mask)
 
 
 n_elem = 4096
