@@ -156,3 +156,13 @@ class WeightedSum(torch.autograd.Function):
                                              num_row, d, ctx.ROW_BLOCK_SIZE, ctx.D_BLOCK_SIZE)
         grad_w = grad_w_partial_reduce.sum(0)
         return grad_x.view(*shape_in), grad_w
+    
+if __name__ == '__main__':
+    device = 'cuda'
+    batch = 1028
+    n_elem = 4096
+    x = torch.rand(batch, n_elem, device=device)
+    w = torch.rand(n_elem, device=device)
+    weighted_sum = WeightedSum()
+    print(weighted_sum(x, w))
+    print((x * w[None, :]).sum(-1))
