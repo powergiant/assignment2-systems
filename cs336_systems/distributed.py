@@ -5,7 +5,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
 from torch import Tensor
-from torch.nn import Module
+from torch.nn import Module, Linear, Embedding
 from torch.optim import Optimizer
 
 import timeit
@@ -254,7 +254,96 @@ class ShardedOptimizer(Optimizer):
                 param_group_new['param'].append(param_group[id])
         self.optimizer_cls.add_param_group(self, param_group_new)
         
+class FSDP(Module):
+    def __init__(self, model: Module, wrap_modules: list[Linear | Embedding], rank: int, world_size: int, compute_dtype: torch.dtype | None = None):
+        super().__init__()
+        self.model = model
+        self.wrap_modules = wrap_modules
+        self.rank = rank
+        self.world_size = world_size
+        self._forward_handles = []
+        self._backward_handles = []
+
+    @torch.no_grad()
+    def _split_param(self):
+        for id, module in enumerate(self.wrap_modules):
+            split_size = module.weight.shape[0] // self.world_size + 1
+            module.weight.copy_(module.weight.split(split_size, dim=0)[self.rank])
+            module.id = id
+
+    def _add_forward_hook(self):
+        if len(self.wrap_modules) <= 2:
+            raise NotImplementedError("Not implemented for the case with <= 2 linears or embeddings")
         
+        def pre_forward_hook(module: Linear | Embedding, input: Tensor):
+            if module.id == 0:
+                gather_ids = [0, 1, 2] 
+            elif 0 < module.id < len(self.wrap_modules) - 2:
+                gather_ids = [module.id + 2]
+            else:
+                gather_ids = []
+
+            with torch.no_grad():
+                for id in gather_ids:
+                    module_gather = self.wrap_modules[id]
+                    weight_shards = []
+                    self._forward_handles.append(dist.all_gather(weight_shards, module_gather.weight, async_op=True))
+                    module_gather.weight.copy_(torch.cat(weight_shards, dim=0))
+            
+            self._forward_handles[module.id].wait()
+
+        def post_forward_hook(module: Linear | Embedding, input: Tensor, output: Tensor):
+            with torch.no_grad():
+                split_size = module.weight.shape[0] // self.world_size + 1
+                module.weight.copy_(module.weight.split(split_size, dim=0)[self.rank])
+
+        for module in self.wrap_modules:
+            module.register_forward_pre_hook(pre_forward_hook)
+            module.register_forward_hook(post_forward_hook)
+
+    def _add_backward_hook(self):
+        if len(self.wrap_modules) <= 2:
+            raise NotImplementedError("Not implemented for the case with <= 2 linears or embeddings")
+        
+        def pre_backward_hook(module: Linear | Embedding, grad_output: Tensor):
+            top_id = len(self.wrap_modules) - 1
+            if module.id == top_id:
+                gather_ids = [top_id, top_id - 1, top_id - 2] 
+            elif 2 <= module.id < top_id:
+                gather_ids = [module.id - 2]
+            else:
+                gather_ids = []
+
+            with torch.no_grad():
+                for id in gather_ids:
+                    module_gather = self.wrap_modules[id]
+                    weight_shards = []
+                    self._forward_handles.append(dist.all_gather(weight_shards, module_gather.weight, async_op=True))
+                    module_gather.weight.copy_(torch.cat(weight_shards, dim=0))
+            
+            self._backward_handles[module.id].wait()
+
+        def post_backward_hook(module: Linear | Embedding, grad_input: Tensor, grad_output: Tensor):
+            with torch.no_grad():
+                split_size = module.weight.shape[0] // self.world_size + 1
+                dist.reduce_scatter(module.weight, module.weight.split(split_size, dim=0))
+
+        for module in self.wrap_modules:
+            module.register_full_backward_pre_hook(pre_backward_hook)
+            module.register_full_backward_hook(post_backward_hook)
+
+    def forward(self, *args, **kwargs):
+        return self.model.forward(*args, **kwargs)
+    
+    def finish_gradient_synchronization(self):
+        for handle in self._forward_handles:
+            handle.wait()
+        self._forward_handles.clear()
+        for handle in self._backward_handles:
+            handle.wait()
+        self._backward_handles.clear()
+        for module in self.wrap_modules:
+            module.weight.grad.div_(self.world_size)
 
 if __name__ == '__main__':
     test_simple_demo()
