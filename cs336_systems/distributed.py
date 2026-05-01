@@ -238,22 +238,21 @@ class ShardedOptimizer(Optimizer):
     
     def step(self, closure = None):
         loss = self.optimizer_cls.step(self, closure)
-
         assert len(self.param_groups) == 1
         for id, param in enumerate(self.params):
-            # rank = id // 
-            # param = 
-            for param in self.param_groups[0]['param']:
+            if id % self.world_size == self.rank:
                 dist.broadcast(param, src=self.rank)
-        pass
+            else:
+                continue
+        return loss
 
     def add_param_group(self, param_group):
         param_group_new = param_group.copy()
-        param_group_new['param'] = list(param_group['param'])
-        num_param_on_rank = len(param_group_new['param']) // self.world_size + 1
-        param_group_new['param'] = param_group_new['param'][..., 
-                        self.rank * num_param_on_rank : (self.rank + 1) * num_param_on_rank]
-        self.optimizer_cls.add_param_group(self, param_group)
+        param_group_new['param'] = []
+        for id in range(len(param_group_new['param'])):
+            if id % self.world_size == self.rank:
+                param_group_new['param'].append(param_group[id])
+        self.optimizer_cls.add_param_group(self, param_group_new)
         
         
 
