@@ -1,6 +1,7 @@
 import triton
 import triton.language as tl
 import torch
+import math
 
 @triton.jit
 def add_kernel(x_ptr, y_ptr, output_ptr, n_elem, BLOCK_SIZE: tl.constexpr):
@@ -165,6 +166,123 @@ def test_weighted_sum_triton():
     w = torch.rand(n_elem, device=device)
     print(WeightedSum.apply(x, w))
     print((x * w[None, :]).sum(-1))
+
+@triton.jit
+def flash_attention_forward(Q_ptr, K_ptr, V_ptr, O_ptr, L_ptr,
+                            stride_qb, stride_qq, stride_qd,
+                            stride_kb, stride_kk, stride_kd,
+                            stride_vb, stride_vk, stride_vd,
+                            stride_ob, stride_oq, stride_od,
+                            stride_lb, stride_ld,
+                            T_queries, T_keys, 
+                            D: tl.constexpr,
+                            Q_BLOCK_SIZE: tl.constexpr, K_BLOCK_SIZE: tl.constexpr,
+                            scale):
+    query_idx = tl.program_id(0)
+    batch_idx = tl.program_id(1)
+
+    Q_ptr = tl.make_block_ptr(Q_ptr + batch_idx * stride_qb, 
+                              shape = (T_queries, D),
+                              strides = (stride_qq, stride_qd),
+                              offsets = (query_idx * Q_BLOCK_SIZE, 0),
+                              block_shape = (Q_BLOCK_SIZE, D),
+                              order = (1, 0))
+    K_ptr = tl.make_block_ptr(K_ptr + batch_idx * stride_kb, 
+                              shape = (T_keys, D),
+                              strides = (stride_kk, stride_kd),
+                              offsets = (0, 0),
+                              block_shape = (K_BLOCK_SIZE, D),
+                              order = (1, 0))
+    V_ptr = tl.make_block_ptr(V_ptr + batch_idx * stride_vb, 
+                              shape = (T_keys, D),
+                              strides = (stride_vk, stride_vd),
+                              offsets = (0, 0),
+                              block_shape = (K_BLOCK_SIZE, D),
+                              order = (1, 0))
+    O_ptr = tl.make_block_ptr(O_ptr + batch_idx * stride_ob, 
+                              shape = (T_queries, D),
+                              strides = (stride_oq, stride_od),
+                              offsets = (query_idx * Q_BLOCK_SIZE, D),
+                              block_shape = (Q_BLOCK_SIZE, D),
+                              order = (1, 0))
+    L_ptr = tl.make_block_ptr(L_ptr + batch_idx * stride_lb, 
+                              shape = (T_queries,),
+                              strides = (stride_ld),
+                              offsets = (query_idx * Q_BLOCK_SIZE,),
+                              block_shape = (Q_BLOCK_SIZE,),
+                              order = (0,))
     
+    
+    Q_block = tl.load(Q_ptr, boundary_check=(0, 1), padding_option='zero')
+    O_block = tl.zeros((Q_BLOCK_SIZE, D), tl.float32)
+    L_block = tl.zeros((Q_BLOCK_SIZE,), tl.float32)
+    M_block = tl.full((Q_BLOCK_SIZE,), float('-inf'), tl.float32)
+
+    for _ in range(tl.cdiv(T_keys, K_BLOCK_SIZE)):
+        K_block = tl.load(K_ptr, boundary_check=(0, 1), padding_option='zero')
+        V_block = tl.load(V_ptr, boundary_check=(0, 1), padding_option='zero')
+        S_block = tl.dot(Q_block, K_block.T) * scale
+        row_max = tl.max(S_block, axis=1)
+        M_block_prev = M_block
+        M_block = tl.maximum(M_block_prev, row_max)
+        P_block = tl.exp(S_block - M_block[:, None])
+        L_block = tl.exp(M_block_prev - M_block) * L_block + tl.sum(P_block, 1)
+        O_block = tl.exp(M_block_prev - M_block)[:, None] *  O_block + tl.dot(P_block, V_block)
+
+        tl.store(O_ptr, O_block, boundary_check=(0, 1))
+        tl.store(L_ptr, L_block, boundary_check=(0,))
+
+        K_ptr = tl.advance(K_ptr, (K_BLOCK_SIZE, 0))
+        V_ptr = tl.advance(V_ptr, (K_BLOCK_SIZE, 0))
+
+    O_block = O_block / (L_block[:, None])
+    L_block = M_block + tl.log(L_block)
+    tl.store(O_ptr, O_block, boundary_check=(0, 1))
+    tl.store(L_ptr, L_block, boundary_check=(0,))
+
+    
+@triton.jit
+def flash_attention_backward():
+    raise NotImplementedError("The backward pass of flash attention is not implemented")
+
+class FlashAttention(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
+        # TODO: shape check, cuda check, contiguous check
+        B, T_queries, D = Q.shape
+        T_keys = K.shape[1]
+
+        Q_BLOCK_SIZE = 64
+        K_BLOCK_SIZE = triton.next_power_of_2(T_keys) // 16
+        
+        num_b_block = tl.cdiv(B, 4)
+        num_q_block = tl.cdiv(T_queries, Q_BLOCK_SIZE)
+        O = torch.empty_like(Q)
+        L = torch.empty((B, D), dtype=Q.dtype, device=Q.device)
+        flash_attention_forward[(num_b_block, num_q_block)](Q, K, V, O, L, 
+                    T_queries * D, D, 1,
+                    T_keys * D, D, 1,
+                    T_keys * D, D, 1,
+                    T_queries * D, D, 1,
+                    D, 1, 
+                    T_queries, T_keys, D, 
+                    Q_BLOCK_SIZE, K_BLOCK_SIZE,
+                    scale=1/math.sqrt(D))
+        return O
+        
+    
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        return super().backward(ctx, *grad_outputs)
+
 if __name__ == '__main__':
-    pass
+    from torch.nn. functional import softmax
+    import math
+    device = 'cuda'
+    B, T_queries, T_keys, D = 128, 1024, 2048, 512
+    Q = torch.rand(B, T_queries, B)
+    K = torch.rand(B, T_keys, B)
+    V = torch.rand(B, T_keys, B)
+    
+    print(FlashAttention.apply(Q, K, V))
+    print(softmax(Q @ K.transpose(-1, -2) / math.sqrt(D)) @ V)
