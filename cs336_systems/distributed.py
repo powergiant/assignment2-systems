@@ -12,7 +12,7 @@ def setup(rank: int, world_size: int):
 
 def distributed_demo(rank: int, world_size: int):
     setup(rank, world_size)
-    tensor_to_reduce = torch.rand(4)
+    tensor_to_reduce = torch.randint(0, 4, (10,))
     print(f"The tensor on rank {rank} before reduce: {tensor_to_reduce}")
     dist.all_reduce(tensor_to_reduce, async_op=False)
     print(f"The tensor on rank {rank} after reduce: {tensor_to_reduce}")
@@ -22,4 +22,4 @@ def test_simple_demo():
     mp.spawn(fn = distributed_demo, args=(world_size,), nprocs= world_size, join=True)
 
 if __name__ == '__main__':
-    pass
+    test_simple_demo()
