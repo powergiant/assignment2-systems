@@ -222,10 +222,11 @@ def run_test_ddp():
 
 class ShardedOptimizer(Optimizer):
     def __init__(self, params: Iterable[Tensor], optimizer_cls: Type[Optimizer], 
-                 rank: int, world_size: int, sharding_axis: int = -1, **kwars):
+                 rank: int, world_size: int, **kwars):
         self.optimizer_cls = optimizer_cls
         self.rank = rank
         self.world_size = world_size
+        self.params = list(params)
         self.sharding_axis = -1
         optimizer_cls.__init__(self, params, kwars)
 
@@ -236,14 +237,22 @@ class ShardedOptimizer(Optimizer):
     #     return params
     
     def step(self, closure = None):
-        loss = closure() if closure else None
+        loss = self.optimizer_cls.step(self, closure)
+
+        assert len(self.param_groups) == 1
+        for id, param in enumerate(self.params):
+            # rank = id // 
+            # param = 
+            for param in self.param_groups[0]['param']:
+                dist.broadcast(param, src=self.rank)
         pass
 
     def add_param_group(self, param_group):
-        for group in param_group:
-            for i, param in enumerate(group['param']):
-                block_size = param.shape[-1] // self.world_size + 1
-                param_group['param'][i] = param[..., self.rank * block_size : (self.rank + 1) * block_size]
+        param_group_new = param_group.copy()
+        param_group_new['param'] = list(param_group['param'])
+        num_param_on_rank = len(param_group_new['param']) // self.world_size + 1
+        param_group_new['param'] = param_group_new['param'][..., 
+                        self.rank * num_param_on_rank : (self.rank + 1) * num_param_on_rank]
         self.optimizer_cls.add_param_group(self, param_group)
         
         
