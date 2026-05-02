@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-from cs336_systems.distributed import DDPNaive
+from cs336_systems.distributed import DDPNaive, DDPFlat
 
 
 def get_flashattention_autograd_function_pytorch() -> type:
@@ -51,7 +51,9 @@ def get_ddp(module: torch.nn.Module) -> torch.nn.Module:
         Instance of a DDP class.
     """
     # For example: return DDP(module)
-    return DDPNaive(module)
+
+    # return DDPNaive(module)
+    return DDPFlat(module)
 
 
 def ddp_on_after_backward(ddp_model: torch.nn.Module, optimizer: torch.optim.Optimizer):
