@@ -60,11 +60,9 @@ def run_benchmark_all_reduce():
     mp.spawn(fn=benchmark_all_reduce, args=(world_size,), nprocs=world_size, join=True)
 
 class DDPNaive(Module):
-    def __init__(self, model: Module, rank: int, world_size: int):
+    def __init__(self, model: Module):
         super().__init__()
         self.model = model
-        self.rank = rank
-        self.world_size = world_size
         self._broad_cast_parameters()
         self._adding_hooks()
 
@@ -75,8 +73,7 @@ class DDPNaive(Module):
 
     def _adding_hooks(self):
         def hook(param: Tensor):
-            dist.all_reduce(param.grad)
-            param.grad.div_(self.world_size)
+            dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
 
         for param in self.model.parameters():
             if param.requires_grad:
@@ -99,7 +96,7 @@ def test_ddp_naive(rank: int, world_size: int):
     is_cuda = True
     device = f'cuda:{rank}' if is_cuda else 'cpu'
     simple_nn = SimpleNN(10).to(device=device)
-    simple_nn_ddp = DDPNaive(simple_nn, rank, world_size)
+    simple_nn_ddp = DDPNaive(simple_nn)
     opt = torch.optim.Adam(simple_nn_ddp.parameters())
 
     for _ in range(5):
@@ -109,8 +106,7 @@ def test_ddp_naive(rank: int, world_size: int):
         loss.backward()
         opt.step()
         with torch.no_grad():
-            dist.all_reduce(loss)
-            loss.div_(world_size)
+            dist.all_reduce(loss, dist.ReduceOp.AVG)
         if rank == 0:
             print(loss)
 
