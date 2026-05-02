@@ -61,11 +61,11 @@ class DDPNaive(Module):
     def __init__(self, module: Module):
         super().__init__()
         self.module = module
-        self._broad_cast_parameters()
+        self._broadcast_parameters()
         self._adding_hooks()
 
     @torch.no_grad()
-    def _broad_cast_parameters(self):
+    def _broadcast_parameters(self):
         for param in self.module.parameters():
             dist.broadcast(param, src=0)
 
@@ -132,10 +132,10 @@ class DDPFlat(Module):
         super().__init__()
         self.module = module
         self._backward_buffer = []
-        self._broad_cast_parameters()
+        self._broadcast_parameters()
 
     @torch.no_grad()
-    def _broad_cast_parameters(self):
+    def _broadcast_parameters(self):
         module_params = list(self.module.parameters())
         flatten_params = flatten_dense_tensors(module_params)
         dist.broadcast(flatten_params, src=0)
@@ -193,19 +193,20 @@ class DDP(Module):
         super().__init__()
         self.module = module
         self._broadcast_paramters()
+        self._adding_hooks()
 
         self._handles = []
 
     @torch.no_grad()
-    def _broadcast_paramters(self):
-        model_params = list(self.module.parameters())
-        flatten_params = flatten_dense_tensors(model_params)
+    def _broadcast_parameters(self):
+        module_params = list(self.module.parameters())
+        flatten_params = flatten_dense_tensors(module_params)
         dist.broadcast(flatten_params, src=0)
-        unflatten_params = unflatten_dense_tensors(flatten_params, model_params)
-        for param_b, param in zip(unflatten_params, model_params):
+        unflatten_params = unflatten_dense_tensors(flatten_params, module_params)
+        for param_b, param in zip(unflatten_params, module_params):
             param.copy_(param_b)
 
-    def _add_hooks(self):
+    def _adding_hooks(self):
         def hook(param: Tensor):
             self._handles.append(dist.all_reduce(param.grad, op=dist.ReduceOp.AVG, async_op=True))
         
