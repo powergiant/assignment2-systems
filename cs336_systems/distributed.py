@@ -189,18 +189,16 @@ def test_flatten_unflatten():
     assert torch.equal(tensors[1], unflatten_dense_tensors(flatten_dense_tensors(tensors), tensors)[1])
 
 class DDP(Module):
-    def __init__(self, model: Module, rank: int, world_size: int):
+    def __init__(self, module: Module):
         super().__init__()
-        self.model = model
-        self.rank = rank
-        self.world_size = world_size
+        self.module = module
         self._broadcast_paramters()
 
         self._handles = []
 
     @torch.no_grad()
     def _broadcast_paramters(self):
-        model_params = list(self.model.parameters())
+        model_params = list(self.module.parameters())
         flatten_params = flatten_dense_tensors(model_params)
         dist.broadcast(flatten_params, src=0)
         unflatten_params = unflatten_dense_tensors(flatten_params, model_params)
@@ -209,21 +207,19 @@ class DDP(Module):
 
     def _add_hooks(self):
         def hook(param: Tensor):
-            self._handles.append((param, dist.all_reduce(param, async_op=True)))
+            self._handles.append(dist.all_reduce(param.grad, op=dist.ReduceOp.AVG, async_op=True))
         
-        for param in self.model.parameters():
+        for param in self.module.parameters():
             if param.requires_grad:
                 param.register_post_accumulate_grad_hook(hook)
     
     def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+        return self.module(*args, **kwargs)
 
     def finish_gradient_synchronization(self):
-        for param, handle in self._handles:
+        for handle in self._handles:
             handle.wait()
-            param: Tensor
-            param.grad.div_(self.world_size)
-        self._handles.clear()
+        self._handles = []
 
 def test_ddp():
     # model = SimpleNN().to(device)
