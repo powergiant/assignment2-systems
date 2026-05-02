@@ -16,10 +16,8 @@ def setup(rank: int, world_size: int):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '29500'
     if torch.cuda.is_available():
-        os.environ['RANK'] = f'{rank}'
-        os.environ['WORLD_SIZE'] = f'{world_size}'
         torch.cuda.set_device(rank)
-        dist.init_process_group(backend="nccl")
+        dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
     else:
         dist.init_process_group('gloo', rank=rank, world_size=world_size)
 
@@ -60,27 +58,30 @@ def run_benchmark_all_reduce():
     mp.spawn(fn=benchmark_all_reduce, args=(world_size,), nprocs=world_size, join=True)
 
 class DDPNaive(Module):
-    def __init__(self, model: Module):
+    def __init__(self, module: Module):
         super().__init__()
-        self.model = model
+        self.module = module
         self._broad_cast_parameters()
         self._adding_hooks()
 
     @torch.no_grad()
     def _broad_cast_parameters(self):
-        for param in self.model.parameters():
+        for param in self.module.parameters():
             dist.broadcast(param, src=0)
 
     def _adding_hooks(self):
         def hook(param: Tensor):
             dist.all_reduce(param.grad, op=dist.ReduceOp.AVG)
 
-        for param in self.model.parameters():
+        for param in self.module.parameters():
             if param.requires_grad:
                 param.register_post_accumulate_grad_hook(hook)
 
     def forward(self, *args, **kwargs):
-        return self.model.forward(*args, **kwargs)
+        return self.module.forward(*args, **kwargs)
+
+    def finish_gradient_synchronization(self):
+        pass
 
 class SimpleNN(Module):
     def __init__(self, dim_in: int):
