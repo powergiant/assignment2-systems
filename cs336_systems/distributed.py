@@ -15,7 +15,13 @@ from typing import Iterable, Type
 def setup(rank: int, world_size: int):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '29500'
-    dist.init_process_group('gloo', rank=rank, world_size=world_size)
+    if torch.cuda.is_available():
+        os.environ['RANK'] = f'{rank}'
+        os.environ['WORLD_SIZE'] = f'{world_size}'
+        torch.cuda.set_device(rank)
+        dist.init_process_group(backend="nccl")
+    else:
+        dist.init_process_group('gloo', rank=rank, world_size=world_size)
 
 
 def distributed_demo(rank: int, world_size: int):
@@ -59,7 +65,6 @@ class DDPNaive(Module):
         self.model = model
         self.rank = rank
         self.world_size = world_size
-        # TODO: device
         self._broad_cast_parameters()
         self._adding_hooks()
 
@@ -91,13 +96,15 @@ class SimpleNN(Module):
 
 def test_ddp_naive(rank: int, world_size: int):
     setup(rank, world_size)
-    simple_nn = SimpleNN(10)
+    is_cuda = True
+    device = f'cuda:{rank}' if is_cuda else 'cpu'
+    simple_nn = SimpleNN(10).to(device=device)
     simple_nn_ddp = DDPNaive(simple_nn, rank, world_size)
     opt = torch.optim.Adam(simple_nn_ddp.parameters())
 
     for _ in range(5):
         simple_nn_ddp.zero_grad()
-        data = torch.rand(10)
+        data = torch.rand(10).to(device=device)
         loss: Tensor = simple_nn_ddp(data)
         loss.backward()
         opt.step()
@@ -346,6 +353,6 @@ class FSDP(Module):
             module.weight.grad.div_(self.world_size)
 
 if __name__ == '__main__':
-    test_simple_demo()
+    # test_simple_demo()
     # run_benchmark_all_reduce()
     run_test_ddp_naive()
