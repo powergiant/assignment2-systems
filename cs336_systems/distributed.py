@@ -133,7 +133,6 @@ class DDPFlat(Module):
         self.module = module
         self._backward_buffer = []
         self._broad_cast_parameters()
-        self._adding_hooks()
 
     @torch.no_grad()
     def _broad_cast_parameters(self):
@@ -143,32 +142,24 @@ class DDPFlat(Module):
         unflatten_params = unflatten_dense_tensors(flatten_params, module_params)
         for param_b, param in zip(unflatten_params, module_params):
             param.copy_(param_b)
-            
-    def _adding_hooks(self):
-        def hook(module: Module, grad_in, grad_out):
-            grads = []
-            module_params = []
-            for param in module.parameters():
-                if param.requires_grad and param.grad is not None:
-                    grads.append(param.grad)
-                    module_params.append(param)
-                if param.grad is not None:
-                    print(param.shape)
-            if len(grads) == 0:
-                return
-            flatten_grads = flatten_dense_tensors(grads)
-            dist.all_reduce(flatten_grads, op=dist.ReduceOp.AVG)
-            unflatten_grads = unflatten_dense_tensors(flatten_grads, grads)
-            for grad_r, param in zip(unflatten_grads, module_params):
-                param.grad.copy_(grad_r)
-
-        self.module.register_full_backward_hook(hook)
 
     def forward(self, *args, **kwargs):
         return self.module(*args, **kwargs)
     
     def finish_gradient_synchronization(self):
-        pass
+        grads = []
+        module_params = []
+        for param in self.module.parameters():
+            if param.requires_grad and param.grad is not None:
+                grads.append(param.grad)
+                module_params.append(param)
+        if len(grads) == 0:
+            return
+        flatten_grads = flatten_dense_tensors(grads)
+        dist.all_reduce(flatten_grads, op=dist.ReduceOp.AVG)
+        unflatten_grads = unflatten_dense_tensors(flatten_grads, grads)
+        for grad_r, param in zip(unflatten_grads, module_params):
+            param.grad.copy_(grad_r)
 
 def test_ddp_flat(rank: int, world_size: int):
     setup(rank, world_size)
