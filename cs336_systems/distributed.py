@@ -237,13 +237,11 @@ def test_ddp():
 def run_test_ddp():
     pass
 
-
 class ShardedOptimizer(Optimizer):
-    def __init__(self, params: Iterable[Tensor], optimizer_cls: Type[Optimizer], 
-                 rank: int, world_size: int, **kwars):
+    def __init__(self, params: Iterable[Tensor], optimizer_cls: Type[Optimizer], **kwars):
         self.optimizer_cls = optimizer_cls
-        self.rank = rank
-        self.world_size = world_size
+        self.rank = dist.get_rank()
+        self.world_size = dist.get_world_size()
         self.params = list(params)
         self.sharding_axis = -1
         optimizer_cls.__init__(self, params, kwars)
